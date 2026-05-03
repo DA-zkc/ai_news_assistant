@@ -26,36 +26,6 @@ class FactOpinionError(Exception):
     pass
 
 
-def get_api_key(key_name: str) -> str:
-    """
-    获取API KEY，支持 Streamlit secrets 和环境变量
-    
-    参数：
-    - key_name: 环境变量名
-    
-    返回：
-    - API KEY 字符串
-    
-    异常：
-    - FactOpinionError: 未找到 KEY 时抛出
-    """
-    try:
-        # 尝试从 Streamlit secrets 获取
-        import streamlit as st
-        if hasattr(st, 'secrets') and key_name in st.secrets:
-            return st.secrets[key_name]
-    except ImportError:
-        # 不在 Streamlit 环境中
-        pass
-    
-    # 从环境变量获取
-    api_key = os.getenv(key_name)
-    if not api_key:
-        raise FactOpinionError(f"❌ {key_name} not found in environment variables or Streamlit secrets")
-    
-    return api_key
-
-
 def _build_extraction_prompt(title: str, description: str, url: str) -> str:
     """
     构建 Qwen 的事实与观点提取提示词
@@ -173,7 +143,9 @@ def process_article(
     - FactOpinionError: API 调用或处理失败时抛出
     """
     
-    api_key = get_api_key("DASHSCOPE_API_KEY")
+    api_key = os.getenv("DASHSCOPE_API_KEY")
+    if not api_key:
+        raise FactOpinionError("❌ DASHSCOPE_API_KEY not found in .env file")
     
     title = news_item.get("title", "")
     description = news_item.get("description", "")

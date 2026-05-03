@@ -13,7 +13,6 @@ pip-wheel-metadata/
 # Virtual environments
 .env
 .env.*
-.secrets.toml
 venv/
 ENV/
 .venv/
