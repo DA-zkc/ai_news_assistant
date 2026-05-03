@@ -23,6 +23,36 @@ class NewsAPIError(Exception):
     pass
 
 
+def get_api_key(key_name: str) -> str:
+    """
+    获取API KEY，支持 Streamlit secrets 和环境变量
+    
+    参数：
+    - key_name: 环境变量名
+    
+    返回：
+    - API KEY 字符串
+    
+    异常：
+    - NewsAPIError: 未找到 KEY 时抛出
+    """
+    try:
+        # 尝试从 Streamlit secrets 获取
+        import streamlit as st
+        if hasattr(st, 'secrets') and key_name in st.secrets:
+            return st.secrets[key_name]
+    except ImportError:
+        # 不在 Streamlit 环境中
+        pass
+    
+    # 从环境变量获取
+    api_key = os.getenv(key_name)
+    if not api_key:
+        raise NewsAPIError(f"❌ {key_name} not found in environment variables or Streamlit secrets")
+    
+    return api_key
+
+
 def fetch_news(
     query: str = "artificial intelligence",
     lang: Optional[str] = "en",
@@ -49,9 +79,7 @@ def fetch_news(
     - NewsAPIError: API 调用失败时抛出
     """
     
-    api_key = os.getenv("GNEWS_API_KEY")
-    if not api_key:
-        raise NewsAPIError("❌ GNEWS_API_KEY not found in .env file")
+    api_key = get_api_key("GNEWS_API_KEY")
     
     # GNewsAPI 端点 (https://gnews.io)
     base_url = "https://gnews.io/api/v4/search"

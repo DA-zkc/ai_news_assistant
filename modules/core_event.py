@@ -24,6 +24,53 @@ class CoreEventError(Exception):
     pass
 
 
+def get_api_key(key_name: str) -> str:
+    """
+    获取API KEY，支持 Streamlit secrets 和环境变量
+    
+    参数：
+    - key_name: 环境变量名
+    
+    返回：
+    - API KEY 字符串
+    
+    异常：
+    - CoreEventError: 未找到 KEY 时抛出
+    """
+    try:
+        # 尝试从 Streamlit secrets 获取
+        import streamlit as st
+        if hasattr(st, 'secrets') and key_name in st.secrets:
+            return st.secrets[key_name]
+    except ImportError:
+        # 不在 Streamlit 环境中
+        pass
+    
+    # 从环境变量获取
+    api_key = os.getenv(key_name)
+    if not api_key:
+        raise CoreEventError(f"❌ {key_name} not found in environment variables or Streamlit secrets")
+    
+    return api_key
+
+
+def get_api_base(key_name: str, default: str) -> str:
+    """
+    获取API BASE URL，支持 Streamlit secrets 和环境变量
+    """
+    try:
+        # 尝试从 Streamlit secrets 获取
+        import streamlit as st
+        if hasattr(st, 'secrets') and key_name in st.secrets:
+            return st.secrets[key_name]
+    except ImportError:
+        # 不在 Streamlit 环境中
+        pass
+    
+    # 从环境变量获取
+    return os.getenv(key_name, default)
+
+
 def _build_event_extraction_prompt(news_item: Dict) -> str:
     """
     构建 DeepSeek 的核心事件提取提示词
@@ -122,11 +169,8 @@ def extract_core_event(
     - CoreEventError: API 调用或处理失败时抛出
     """
     
-    api_key = os.getenv("DEEPSEEK_API_KEY")
-    api_base = os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com/v1")
-    
-    if not api_key:
-        raise CoreEventError("❌ DEEPSEEK_API_KEY not found in .env file")
+    api_key = get_api_key("DEEPSEEK_API_KEY")
+    api_base = get_api_base("DEEPSEEK_BASE_URL", "https://api.deepseek.com/v1")
     
     title = news_item.get("title", "")
     if not title:

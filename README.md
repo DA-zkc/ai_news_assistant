@@ -43,15 +43,31 @@ python -m pip install -r requirements.txt
 
 ## 配置 API 密钥
 
+### 命令行使用
+
 在项目根目录创建 `.env` 文件，填写如下内容：
 
 ```text
 GNEWS_API_KEY=your_gnews_api_key
 DEEPSEEK_API_KEY=your_deepseek_api_key
+DEEPSEEK_BASE_URL=https://api.deepseek.com/v1
 DASHSCOPE_API_KEY=your_dashscope_api_key
 ```
 
-> 注意：`.env` 已加入 `.gitignore`，请勿将真实密钥提交到版本库。
+### Web 应用使用
+
+对于 Streamlit Web 应用，需要配置 secrets。在项目根目录创建 `.secrets.toml` 文件：
+
+```toml
+GNEWS_API_KEY = "your_gnews_api_key"
+DEEPSEEK_API_KEY = "your_deepseek_api_key"
+DEEPSEEK_BASE_URL = "https://api.deepseek.com/v1"
+DASHSCOPE_API_KEY = "your_dashscope_api_key"
+```
+
+> 注意：`.env` 和 `.secrets.toml` 已加入 `.gitignore`，请勿将真实密钥提交到版本库。
+
+你也可以参考 `.secrets.toml.example` 文件。
 
 ## 使用方式
 
@@ -79,11 +95,13 @@ python main.py --date 2026-05-02
 python main.py --debug
 ```
 
-### 禁用 Qwen 描述生成（加快速度）
+### 运行 Web 应用
 
 ```bash
-python main.py --no-qwen
+streamlit run streamlit_app.py
 ```
+
+Web 应用会自动使用 `.secrets.toml` 中的 API 密钥，访客无需提供密钥即可使用功能。
 
 ### 参考参数说明
 
