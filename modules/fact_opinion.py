@@ -11,6 +11,7 @@ fact_opinion.py - 事实与观点分离（使用 Qwen3-235B-A22B）
 import os
 import json
 import re
+import time
 from typing import List, Dict, Optional
 from dotenv import load_dotenv
 import httpx
@@ -88,6 +89,42 @@ Important rules:
     return prompt
 
 
+def _dashscope_post(payload: dict, api_key: str, retries: int = 3, timeout: float = 60.0) -> httpx.Response:
+    """
+    调用 DashScope API 并在失败时重试。
+    """
+    last_error = None
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json",
+    }
+
+    for attempt in range(1, retries + 1):
+        try:
+            with httpx.Client(timeout=timeout) as client:
+                response = client.post(
+                    "https://dashscope.aliyuncs.com/api/v1/services/aigc/text-generation/generation",
+                    headers=headers,
+                    json=payload,
+                )
+                response.raise_for_status()
+                return response
+        except (httpx.ReadTimeout, httpx.ConnectTimeout, httpx.NetworkError) as e:
+            last_error = e
+            logger.warning(
+                f"⚠️ DashScope request timeout/network error on attempt {attempt}/{retries}: {e}"
+            )
+            if attempt < retries:
+                time.sleep(2 ** attempt)
+            continue
+        except httpx.HTTPStatusError as e:
+            raise FactOpinionError(f"❌ DashScope API error: {e.response.status_code} - {e.response.text}")
+        except Exception as e:
+            raise FactOpinionError(f"❌ Unexpected error calling DashScope: {str(e)}")
+
+    raise FactOpinionError(f"❌ Failed to call DashScope API after {retries} attempts: {last_error}")
+
+
 def process_article(
     news_item: Dict,
     temperature: float = 0.3
@@ -123,15 +160,6 @@ def process_article(
     logger.debug(f"🔍 Processing: {title[:50]}...")
     
     try:
-        # 调用 DashScope API（阿里云灵积）
-        # 使用 httpx 库进行 HTTP 请求
-        client = httpx.Client(timeout=30.0)
-        
-        headers = {
-            "Authorization": f"Bearer {api_key}",
-            "Content-Type": "application/json",
-        }
-        
         payload = {
             "model": "qwen3-235b-a22b",
             "input": {
@@ -147,37 +175,27 @@ def process_article(
                 "max_tokens": 2000,
             }
         }
-        
-        response = client.post(
-            "https://dashscope.aliyuncs.com/api/v1/services/aigc/text-generation/generation",
-            headers=headers,
-            json=payload
-        )
-        
-        if response.status_code != 200:
-            raise FactOpinionError(f"❌ DashScope API error: {response.status_code} - {response.text}")
-        
+
+        response = _dashscope_post(payload, api_key=api_key, retries=3, timeout=60.0)
         response_data = response.json()
-        
+
         # 检查响应中是否有 output 字段
         if "output" not in response_data:
             raise FactOpinionError(f"❌ DashScope API returned invalid format: {response_data}")
-        
+
         # 提取文本内容
         output = response_data.get("output", {})
         choices = output.get("choices", [])
-        
+
         if not choices:
             raise FactOpinionError("❌ DashScope API returned empty choices")
-        
+
         response_text = choices[0].get("message", {}).get("content", "")
-        
+
         logger.debug(f"📝 DashScope response received: {len(response_text)} chars")
-        
-        client.close()
-        
-    except httpx.RequestError as e:
-        raise FactOpinionError(f"❌ Failed to call DashScope API: {str(e)}")
+
+    except FactOpinionError:
+        raise
     except Exception as e:
         raise FactOpinionError(f"❌ Unexpected error calling DashScope: {str(e)}")
     

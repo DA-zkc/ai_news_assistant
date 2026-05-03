@@ -9,6 +9,7 @@ merger.py - 合并相同/相似核心事件
 """
 
 import os
+import time
 from typing import List, Dict, Tuple
 from collections import defaultdict
 import numpy as np
@@ -139,6 +140,42 @@ Generate a concise but comprehensive unified event description (in English, 1-2 
     return prompt
 
 
+def _dashscope_post(payload: dict, api_key: str, retries: int = 3, timeout: float = 60.0) -> httpx.Response:
+    """
+    调用 DashScope API 并在失败时重试。
+    """
+    last_error = None
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json",
+    }
+
+    for attempt in range(1, retries + 1):
+        try:
+            with httpx.Client(timeout=timeout) as client:
+                response = client.post(
+                    "https://dashscope.aliyuncs.com/api/v1/services/aigc/text-generation/generation",
+                    headers=headers,
+                    json=payload,
+                )
+                response.raise_for_status()
+                return response
+        except (httpx.ReadTimeout, httpx.ConnectTimeout, httpx.NetworkError) as e:
+            last_error = e
+            logger.warning(
+                f"⚠️ DashScope request timeout/network error on attempt {attempt}/{retries}: {e}"
+            )
+            if attempt < retries:
+                time.sleep(2 ** attempt)
+            continue
+        except httpx.HTTPStatusError as e:
+            raise MergerError(f"❌ DashScope API error: {e.response.status_code} - {e.response.text}")
+        except Exception as e:
+            raise MergerError(f"❌ Unexpected error calling DashScope: {str(e)}")
+
+    raise MergerError(f"❌ Failed to call DashScope API after {retries} attempts: {last_error}")
+
+
 async def _generate_cluster_description(
     cluster_events: List[Dict],
     api_key: str
@@ -224,13 +261,6 @@ def _generate_cluster_description_sync(
     prompt = _build_cluster_description_prompt(cluster_events)
     
     try:
-        client = httpx.Client(timeout=30.0)
-        
-        headers = {
-            "Authorization": f"Bearer {api_key}",
-            "Content-Type": "application/json",
-        }
-        
         payload = {
             "model": "qwen3-235b-a22b",
             "input": {
@@ -246,29 +276,24 @@ def _generate_cluster_description_sync(
                 "max_tokens": 500,
             }
         }
-        
-        response = client.post(
-            "https://dashscope.aliyuncs.com/api/v1/services/aigc/text-generation/generation",
-            headers=headers,
-            json=payload
-        )
-        
+
+        response = _dashscope_post(payload, api_key=api_key, retries=3, timeout=60.0)
         response_data = response.json()
-        
+
         if "output" not in response_data:
             raise MergerError("❌ Invalid DashScope response format")
-        
+
         output = response_data.get("output", {})
         choices = output.get("choices", [])
-        
+
         if not choices:
             raise MergerError("❌ No response from DashScope")
-        
+
         description = choices[0].get("message", {}).get("content", "")
-        
-        client.close()
         return description.strip()
-        
+
+    except MergerError:
+        raise
     except Exception as e:
         raise MergerError(f"❌ Failed to generate cluster description: {str(e)}")
 

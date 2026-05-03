@@ -40,7 +40,8 @@ def call_deepseek_pro(messages, temperature=0.1, max_tokens=3000):
             messages=messages,
             temperature=temperature,
             max_tokens=max_tokens,
-            response_format={"type": "json_object"}
+            reasoning_effort="high",
+            extra_body={ "thinking": { "type": "enabled" } }
         )
         return response.choices[0].message.content
     except Exception as e:

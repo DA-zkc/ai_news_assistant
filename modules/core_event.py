@@ -150,7 +150,7 @@ def extract_core_event(
             logger.debug("🧠 Using extended thinking mode...")
             
             response = client.chat.completions.create(
-                model="deepseek-reasoner",
+                model="deepseek-v4-pro",
                 messages=[
                     {
                         "role": "user",
@@ -158,10 +158,9 @@ def extract_core_event(
                     }
                 ],
                 temperature=temperature,
-                max_completion_tokens=16000,
-                extra_body={
-                    "reasoning_content": max_thinking_length
-                }
+                max_tokens=16000,
+                reasoning_effort="high",
+                extra_body={ "thinking": { "type": "enabled" } }
             )
         else:
             # 标准模式

@@ -25,9 +25,9 @@ class NewsAPIError(Exception):
 
 def fetch_news(
     query: str = "artificial intelligence",
-    lang: str = "en",
-    country: str = "us",
-    max_articles: int = 50,
+    lang: Optional[str] = "en",
+    country: Optional[str] = None,
+    max_articles: int = 100,
     sort_by: str = "publishedAt",
     date: Optional[str] = None
 ) -> List[Dict]:
@@ -72,33 +72,39 @@ def fetch_news(
     
     params = {
         "q": query,
-        "lang": lang,
-        "country": country,
         "max": max_articles,
         "sortby": sort_by,
         "token": api_key,
     }
-    
-    logger.info(f"📡 Fetching news from GNewsAPI: q='{query}', lang={lang}, country={country}, max={max_articles}")
-    
-    try:
-        response = requests.get(base_url, params=params, timeout=10)
-        response.raise_for_status()
-    except requests.exceptions.RequestException as e:
-        raise NewsAPIError(f"❌ Failed to fetch news from GNewsAPI: {str(e)}")
-    
-    try:
-        data = response.json()
-    except ValueError:
-        raise NewsAPIError(f"❌ Invalid JSON response from GNewsAPI: {response.text}")
-    
-    # 检查 API 响应是否成功
-    if "articles" not in data:
-        logger.warning(f"⚠️  No articles found. API response: {data}")
-        return []
-    
-    articles = data.get("articles", [])
-    logger.info(f"✅ Retrieved {len(articles)} articles from GNewsAPI")
+    if lang:
+        params["lang"] = lang
+    if country:
+        params["country"] = country
+
+    def _fetch_articles(fetch_params):
+        logger.info(
+            f"📡 Fetching news from GNewsAPI: q='{fetch_params.get('q')}', lang={fetch_params.get('lang', 'any')}, country={fetch_params.get('country', 'global')}, max={fetch_params.get('max')}"
+        )
+        try:
+            response = requests.get(base_url, params=fetch_params, timeout=10)
+            response.raise_for_status()
+        except requests.exceptions.RequestException as e:
+            raise NewsAPIError(f"❌ Failed to fetch news from GNewsAPI: {str(e)}")
+
+        try:
+            data = response.json()
+        except ValueError:
+            raise NewsAPIError(f"❌ Invalid JSON response from GNewsAPI: {response.text}")
+
+        if "articles" not in data:
+            logger.warning(f"⚠️  No articles found. API response: {data}")
+            return []
+
+        articles = data.get("articles", [])
+        logger.info(f"✅ Retrieved {len(articles)} articles from GNewsAPI")
+        return articles
+
+    articles = _fetch_articles(params)
     
     # 处理和格式化新闻数据
     news_list = []

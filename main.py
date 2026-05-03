@@ -43,6 +43,22 @@ logger.add(
     help="指定日期 YYYY-MM-DD，默认今天"
 )
 @click.option(
+    "--lang",
+    default="en",
+    help="查询语言代码，例如 en、zh，默认 en"
+)
+@click.option(
+    "--country",
+    default=None,
+    help="国家代码，例如 us、cn，默认全球范围"
+)
+@click.option(
+    "--max-articles",
+    default=100,
+    type=int,
+    help="最大获取文章数量，默认 100"
+)
+@click.option(
     "--out",
     default="ai_news_today.md",
     help="输出 Markdown 文件路径，默认 ai_news_today.md"
@@ -63,7 +79,7 @@ logger.add(
     is_flag=True,
     help="禁用 Qwen 生成聚类描述（更快但质量可能降低）"
 )
-def main(date, out, eps, debug, no_qwen):
+def main(date, lang, country, max_articles, out, eps, debug, no_qwen):
     """
     AI 要闻助手 - 每日 AI 行业新闻摘要生成工具
     
@@ -109,6 +125,9 @@ def main(date, out, eps, debug, no_qwen):
     click.echo("🤖 AI 要闻助手 - 每日新闻摘要生成")
     click.echo("=" * 70)
     click.echo(f"📅 日期: {date}")
+    click.echo(f"🌐 语言: {lang}")
+    click.echo(f"🌍 国家: {country or 'global'}")
+    click.echo(f"📄 最大文章数: {max_articles}")
     click.echo(f"📁 输出: {out}")
     click.echo(f"🔀 聚类 eps: {eps}")
     click.echo("=" * 70 + "\n")
@@ -116,7 +135,14 @@ def main(date, out, eps, debug, no_qwen):
     try:
         # ===== 阶段1：获取原始新闻 =====
         click.echo("📰 [1/6] 从 GNews API 获取新闻...")
-        raw_news = fetch_news()
+        raw_news = fetch_news(
+            query="artificial intelligence",
+            lang=lang,
+            country=country,
+            max_articles=max_articles,
+            sort_by="publishedAt",
+            date=date,
+        )
         
         if not raw_news:
             click.echo("❌ 未能获取任何新闻", err=True)

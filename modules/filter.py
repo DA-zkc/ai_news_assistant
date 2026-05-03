@@ -133,7 +133,7 @@ def filter_news(
     try:
         # 调用 DeepSeek API
         response = client.chat.completions.create(
-            model="deepseek-chat",
+            model="deepseek-v4-flash",
             messages=[
                 {
                     "role": "user",
