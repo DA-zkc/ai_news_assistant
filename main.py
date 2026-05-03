@@ -67,7 +67,7 @@ logger.add(
     "--eps",
     default=0.3,
     type=float,
-    help="DBSCAN 聚类参数 eps，默认 0.3（值越小，聚类越严格）"
+    help="事件聚类相似度阈值 eps，默认 0.3（值越大，聚类越宽松）"
 )
 @click.option(
     "--debug",
