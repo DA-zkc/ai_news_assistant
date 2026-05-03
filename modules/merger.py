@@ -3,18 +3,20 @@ merger.py - 合并相同/相似核心事件
 
 功能：
 - 使用 TF-IDF 向量计算事件相似度
-- 使用余弦相似度阈值聚类相似事件
+- DBSCAN 聚类相似事件
 - 为每个簇调用 Qwen 生成最终事件描述
 - 计算聚类后事件的可信度分数（reliability_score）
 """
 
 import os
-import re
 import time
 from typing import List, Dict, Tuple
-from collections import defaultdict, Counter
+from collections import defaultdict
 import numpy as np
 from dotenv import load_dotenv
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.cluster import DBSCAN
+from sklearn.metrics.pairwise import cosine_similarity
 import httpx
 from loguru import logger
 import json
@@ -28,127 +30,77 @@ class MergerError(Exception):
     pass
 
 
-def _load_embedding_model() -> dict:
+def _load_embedding_model() -> TfidfVectorizer:
     """
-    创建 TF-IDF 配置器占位符
+    创建 TF-IDF 向量器
     
     返回：
-    - dict: 占位配置对象
+    - TfidfVectorizer: 配置的向量器
     """
     try:
-        logger.debug("📥 Initializing TF-IDF helper...")
-        return {
-            "stop_words": set(),
-            "min_term_length": 2
-        }
+        logger.debug("📥 Creating TF-IDF vectorizer...")
+        vectorizer = TfidfVectorizer(
+            max_features=1000,
+            stop_words='english',
+            ngram_range=(1, 2)
+        )
+        logger.debug("✅ Vectorizer created successfully")
+        return vectorizer
     except Exception as e:
-        raise MergerError(f"❌ Failed to initialize embedding helper: {str(e)}")
-
-
-def _tokenize(text: str) -> List[str]:
-    """
-    将文本拆分为小写词项列表
-    """
-    tokens = re.findall(r"\b[a-zA-Z0-9']+\b", text.lower())
-    return [token for token in tokens if len(token) > 1]
+        raise MergerError(f"❌ Failed to create vectorizer: {str(e)}")
 
 
 def _compute_event_vectors(
     events: List[Dict],
-    vectorizer: dict
-) -> Tuple[np.ndarray, dict]:
+    vectorizer: TfidfVectorizer
+) -> Tuple[np.ndarray, TfidfVectorizer]:
     """
-    计算事件的 TF-IDF 向量表示（纯 Python 实现）
+    计算事件的 TF-IDF 向量表示
     
     参数：
     - events: 核心事件列表
-    - vectorizer: 占位配置对象
+    - vectorizer: TF-IDF 向量器
     
     返回：
-    - Tuple[np.ndarray, dict]: 向量矩阵和配置对象
+    - Tuple[np.ndarray, TfidfVectorizer]: 向量矩阵和拟合的向量器
     """
     core_events = [event["core_event"] for event in events]
     logger.debug(f"🧮 Computing TF-IDF vectors for {len(core_events)} events...")
-
-    tokenized_docs = [_tokenize(event) for event in core_events]
-    if not tokenized_docs:
-        return np.zeros((0, 0), dtype=float), vectorizer
-
-    vocabulary = sorted({token for doc in tokenized_docs for token in doc})
-    vocab_index = {token: idx for idx, token in enumerate(vocabulary)}
-    num_docs = len(tokenized_docs)
-    num_features = len(vocabulary)
-
-    if num_features == 0:
-        return np.zeros((num_docs, 0), dtype=float), vectorizer
-
-    document_frequencies = Counter()
-    for doc in tokenized_docs:
-        document_frequencies.update(set(doc))
-
-    idf = {
-        token: np.log((num_docs + 1) / (document_frequencies[token] + 1)) + 1.0
-        for token in vocabulary
-    }
-
-    vectors = np.zeros((num_docs, num_features), dtype=float)
-    for idx, doc in enumerate(tokenized_docs):
-        term_counts = Counter(doc)
-        for term, count in term_counts.items():
-            vectors[idx, vocab_index[term]] = count * idf[term]
-
-    norms = np.linalg.norm(vectors, axis=1, keepdims=True)
-    norms[norms == 0] = 1.0
-    vectors = vectors / norms
-
+    
+    # 拟合并转换
+    vectors = vectorizer.fit_transform(core_events).toarray()
     logger.debug(f"✅ Computed vectors shape: {vectors.shape}")
+    
     return vectors, vectorizer
 
 
 def _cluster_events(
     vectors: np.ndarray,
-    eps: float = 0.3
+    eps: float = 0.3,
+    min_samples: int = 1
 ) -> np.ndarray:
     """
-    使用余弦相似度门限进行事件聚类
+    使用 DBSCAN 聚类事件向量
     
     参数：
-    - vectors: 规范化向量矩阵
-    - eps: 相似度阈值（0.0 - 1.0）
+    - vectors: 事件向量矩阵
+    - eps: DBSCAN eps 参数（相似度阈值）
+    - min_samples: DBSCAN min_samples 参数
     
     返回：
     - np.ndarray: 聚类标签数组
     """
-    logger.debug(f"🔀 Clustering with similarity threshold eps={eps}...")
-
-    num_items = vectors.shape[0]
-    if num_items == 0:
-        return np.array([], dtype=int)
-
-    labels = np.full(num_items, -1, dtype=int)
-    cluster_id = 0
-
-    for i in range(num_items):
-        if labels[i] != -1:
-            continue
-
-        labels[i] = cluster_id
-        queue = [i]
-
-        while queue:
-            idx = queue.pop()
-            for j in range(num_items):
-                if labels[j] != -1:
-                    continue
-                similarity = float(np.dot(vectors[idx], vectors[j]))
-                if similarity >= eps:
-                    labels[j] = cluster_id
-                    queue.append(j)
-
-        cluster_id += 1
-
-    n_clusters = len(set(labels))
-    logger.debug(f"✅ Clustering complete: {n_clusters} clusters")
+    logger.debug(f"🔀 Clustering with DBSCAN (eps={eps}, min_samples={min_samples})...")
+    
+    # 对于 TF-IDF，使用欧几里得距离
+    clustering = DBSCAN(eps=eps, min_samples=min_samples, metric="euclidean")
+    labels = clustering.fit_predict(vectors)
+    
+    n_clusters = len(set(labels)) - (1 if -1 in labels else 0)
+    n_noise = list(labels).count(-1)
+    
+    logger.debug(f"✅ Clustering complete: {n_clusters} clusters, {n_noise} noise points")
+    
     return labels
 
 
