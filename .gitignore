@@ -12,7 +12,9 @@ pip-wheel-metadata/
 
 # Virtual environments
 .env
-.env.*
+.env.local
+.env.production
+.env.development
 .secrets.toml
 venv/
 ENV/
