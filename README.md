@@ -43,7 +43,13 @@ python -m pip install -r requirements.txt
 
 ## 配置 API 密钥
 
-在项目根目录创建 `.env` 文件，填写如下内容：
+复制 `.env.example` 为 `.env` 文件，并填写你的 API 密钥：
+
+```bash
+cp .env.example .env
+```
+
+然后编辑 `.env` 文件，填写如下内容：
 
 ```text
 GNEWS_API_KEY=your_gnews_api_key

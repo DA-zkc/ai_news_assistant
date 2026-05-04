@@ -146,7 +146,7 @@ def extract_core_event(
     try:
         # 调用 DeepSeek-V4-pro API
         if use_extended_thinking:
-            # 使用扩展思考模式
+            # 使用可用的 DeepSeek 调用参数，避免不兼容的扩展参数
             logger.debug("🧠 Using extended thinking mode...")
             
             response = client.chat.completions.create(
@@ -158,9 +158,7 @@ def extract_core_event(
                     }
                 ],
                 temperature=temperature,
-                max_tokens=16000,
-                reasoning_effort="high",
-                extra_body={ "thinking": { "type": "enabled" } }
+                max_tokens=2000,
             )
         else:
             # 标准模式
